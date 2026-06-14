@@ -3786,6 +3786,8 @@ function syncPipaRuntimeChip() {
     if (chip) chip.style.display = 'none';
     if (modelChipWrap) modelChipWrap.style.display = '';
   }
+  // Keep the composer agent selector in sync every time chip state changes.
+  _syncPipaAgentSelector();
 }
 
 function _renderPipaSkillsSection(box, skills) {
@@ -3912,7 +3914,71 @@ function _pipaRestoreForCurrentSession() {
   }
   if (typeof syncPipaRuntimeChip === 'function') syncPipaRuntimeChip();
   _pipaRestoreSelectionHighlight();
+  _syncPipaAgentSelector();
 }
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── PiPa Agent composer selector ─────────────────────────────────────────────
+
+// Lightweight boot-time fetch — populates the selector without opening the Skills panel.
+async function _prefetchPipaSkillsForSelector() {
+  if (_pipaSkillsData) { _populatePipaAgentSelector(); return; }
+  try {
+    const d = await api('/api/pipa/skills').catch(() => ({skills:[]}));
+    _pipaSkillsData = d.skills || [];
+    _populatePipaAgentSelector();
+  } catch(_) {}
+}
+
+// Populate the <select id="pipaAgentSelect"> from the cached _pipaSkillsData list.
+// Called after loadSkills() has fetched /api/pipa/skills.
+function _populatePipaAgentSelector() {
+  const sel = document.getElementById('pipaAgentSelect');
+  if (!sel) return;
+  const skills = _pipaSkillsData || [];
+  // Remove all non-None options, then re-add from current skill list.
+  Array.from(sel.options).forEach(o => { if (o.value !== '') sel.removeChild(o); });
+  for (const s of skills) {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = `Agent: ${s.name}`;
+    sel.appendChild(opt);
+  }
+  _syncPipaAgentSelector();
+}
+
+// Keep the selector value in sync with window._activePipaSkill.
+function _syncPipaAgentSelector() {
+  const sel = document.getElementById('pipaAgentSelect');
+  const wrap = document.getElementById('pipaAgentSelectWrap');
+  if (!sel) return;
+  const active = window._activePipaSkill;
+  sel.value = (active && active.id) ? active.id : '';
+  if (wrap) wrap.classList.toggle('active', !!(active && active.id));
+}
+
+// Called by onchange on the <select>. Applies the chosen agent (or clears it).
+function onPipaAgentSelectChange(value) {
+  if (!value) {
+    // None selected — clear active skill for this session.
+    _clearActivePipaSkill();
+    return;
+  }
+  // Find the skill object from the cached list.
+  const skills = _pipaSkillsData || [];
+  const skill = skills.find(s => s.id === value);
+  if (!skill) return;
+  // Mirror _selectPipaSkill but without switching to the skills panel.
+  const skillObj = { id: skill.id, name: skill.name };
+  window._activePipaSkill = skillObj;
+  _pipaSaveSkillForSession(skillObj);
+  const ta = document.getElementById('msg');
+  if (ta) ta.placeholder = `PiPa — ${skill.name}…`;
+  syncPipaRuntimeChip();
+  _pipaRestoreSelectionHighlight();
+  console.log('[PiPa] Agent selector set:', skill.id);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── Skills panel ──
@@ -3920,6 +3986,7 @@ async function loadSkills() {
   if (_skillsData) {
     renderSkills(_skillsData);
     _renderPipaSkillsSection($('skillsList'), _pipaSkillsData || []);
+    _populatePipaAgentSelector();
     return;
   }
   const box = $('skillsList');
@@ -3936,6 +4003,7 @@ async function loadSkills() {
     for (const c of _collapsedCats) { if (!liveCats.has(c)) _collapsedCats.delete(c); }
     renderSkills(_skillsData);
     _renderPipaSkillsSection(box, _pipaSkillsData);
+    _populatePipaAgentSelector();
   } catch(e) { box.innerHTML = `<div style="padding:12px;color:var(--accent);font-size:12px">Error: ${esc(e.message)}</div>`; }
 }
 

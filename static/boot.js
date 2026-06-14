@@ -2056,6 +2056,11 @@ function applyBotName(){
   setTimeout(()=>{
     try{Promise.resolve(_startBootModelDropdown()).catch(()=>{});}catch(_){}
   },0);
+  // Pre-fetch PiPa skills list so the composer Agent selector is populated
+  // immediately, without requiring the user to open the Skills panel first.
+  setTimeout(()=>{
+    try{if(typeof _prefetchPipaSkillsForSelector==='function') _prefetchPipaSkillsForSelector();}catch(_){}
+  },0);
   // Start independent boot fetches without holding the conversation list behind
   // them. The sidebar can render from /api/sessions while workspace/onboarding
   // metadata settles in parallel.
